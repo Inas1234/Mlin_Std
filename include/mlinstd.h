@@ -15,11 +15,55 @@ typedef struct
     size_t capacity;
 } MlinString;
 
+typedef struct {
+    void * items;
+    size_t count;
+    size_t capacity;
+    size_t elem_size;
+} MlinArray;
+
+#define MLIN_INIT_CAP 16
+
 #define MLIN_LOG(msg) \
     printf("[LOG] %s:%d in %s: %s\n", __FILE__, __LINE__, __func__, msg)
 
 #define MLIN_ERROR(msg) \
     fprintf(stderr, "[ERROR] %s in function %s at line %d: %s\n", msg, __func__, __LINE__, strerror(errno))
+
+#define MLIN_APPEND(da, item)                                                       \
+    do {                                                                               \
+        if ((da)->count >= (da)->capacity) {                                           \
+            size_t new_capacity = (da)->capacity == 0 ? MLIN_INIT_CAP : (da)->capacity * 2; \
+            void *new_items = realloc((da)->items, new_capacity * (da)->elem_size);    \
+            if (!new_items) {                                                         \
+                MLIN_ERROR("Failed to allocate memory for dynamic array");                \
+                exit(EXIT_FAILURE);                                                   \
+            }                                                                         \
+            (da)->items = new_items;                                                  \
+            (da)->capacity = new_capacity;                                            \
+        }                                                                             \
+        memcpy((char *)(da)->items + ((da)->count * (da)->elem_size), &(item), (da)->elem_size); \
+        (da)->count++;                                                                \
+    } while (0)
+
+
+#define MLIN_GET(da, type, index) (*((type *)mlin_array_get(da, index)))
+
+
+//MLIN ARRAY
+MlinArray *mlin_array_create(size_t elem_size);
+void mlin_array_free(MlinArray *arr);
+void *mlin_array_get(MlinArray *arr, size_t index);
+void mlin_array_set(MlinArray *arr, size_t index, const void *value);
+void mlin_array_clear(MlinArray *arr);
+void mlin_array_insert(MlinArray *arr, size_t index, const void *value);
+void mlin_array_remove(MlinArray *arr, size_t index);
+size_t mlin_array_find(MlinArray *arr, const void *value, int (*cmp)(const void *, const void *));
+void mlin_array_resize(MlinArray *arr, size_t new_capacity);
+int mlin_cmp_int(const void *a, const void *b);
+int mlin_cmp_float(const void *a, const void *b);
+int mlin_cmp_str(const void *a, const void *b);
+int mlin_cmp_mlinstring(const void *a, const void *b);
 
 // MLIN STRING
 MlinString * mlin_string_create_with_src(const char * src);
@@ -38,7 +82,127 @@ MlinString **mlin_string_split(MlinString *str, const char *delim, size_t *count
 void mlin_string_clear(MlinString *str);
 char mlin_string_char_at(MlinString *str, size_t index);
 
+//MLIN ARRAY IMPLEMENTATION
+MlinArray *mlin_array_create(size_t elem_size) {
+    MlinArray * arr = (MlinArray *)malloc(sizeof(MlinArray));
+    if (!arr){
+        MLIN_ERROR("FAILED TO ALLOCATE MEMORY");
+        exit(EXIT_FAILURE);
+    }
+    arr->count = 0;
+    arr->capacity = 0;
+    arr->elem_size = elem_size;
+    arr->items = NULL;
 
+    return arr;
+}
+
+void mlin_array_free(MlinArray *arr){
+    free(arr->items);
+    free(arr);
+}
+
+void *mlin_array_get(MlinArray *arr, size_t index) {
+    if (index >= arr->count) {
+        fprintf(stderr, "[ERROR] Index %zu out of bounds for dynamic array of size %zu\n", index, arr->count);
+        exit(EXIT_FAILURE);
+    }
+    return (char *)arr->items + (index * arr->elem_size);
+}
+
+void mlin_array_set(MlinArray *arr, size_t index, const void *value) {
+    if (index >= arr->count) {
+        fprintf(stderr, "[ERROR] Index %zu out of bounds for dynamic array of size %zu\n", index, arr->count);
+        exit(EXIT_FAILURE);
+    }
+    memcpy((char *)arr->items + (index * arr->elem_size), value, arr->elem_size);
+}
+
+void mlin_array_clear(MlinArray *arr) {
+    arr->count = 0;
+}
+
+void mlin_array_insert(MlinArray *arr, size_t index, const void *value) {
+    if (index > arr->count) {
+        fprintf(stderr, "[ERROR] Index %zu out of bounds for dynamic array of size %zu\n", index, arr->count);
+        exit(EXIT_FAILURE);
+    }
+    if (arr->count >= arr->capacity) {
+        size_t new_capacity = arr->capacity == 0 ? MLIN_INIT_CAP : arr->capacity * 2;
+        arr->items = realloc(arr->items, new_capacity * arr->elem_size);
+        if (!arr->items) {
+            perror("Failed to allocate memory for dynamic array");
+            exit(EXIT_FAILURE);
+        }
+        arr->capacity = new_capacity;
+    }
+    memmove((char *)arr->items + ((index + 1) * arr->elem_size),
+            (char *)arr->items + (index * arr->elem_size),
+            (arr->count - index) * arr->elem_size);
+    memcpy((char *)arr->items + (index * arr->elem_size), value, arr->elem_size);
+    arr->count++;
+}
+
+void mlin_array_remove(MlinArray *arr, size_t index) {
+    if (index >= arr->count) {
+        fprintf(stderr, "[ERROR] Index %zu out of bounds for dynamic array of size %zu\n", index, arr->count);
+        exit(EXIT_FAILURE);
+    }
+    memmove((char *)arr->items + (index * arr->elem_size),
+            (char *)arr->items + ((index + 1) * arr->elem_size),
+            (arr->count - index - 1) * arr->elem_size);
+    arr->count--;
+}
+
+size_t mlin_array_find(MlinArray *arr, const void *value, int (*cmp)(const void *, const void *)) {
+    for (size_t i = 0; i < arr->count; i++) {
+        if (cmp(value, (char *)arr->items + (i * arr->elem_size)) == 0) {
+            return i;
+        }
+    }
+    return (size_t)-1; 
+}
+
+void mlin_array_resize(MlinArray *arr, size_t new_capacity) {
+    if (new_capacity < arr->count) {
+        fprintf(stderr, "[ERROR] New capacity %zu cannot be smaller than current size %zu\n", new_capacity, arr->count);
+        exit(EXIT_FAILURE);
+    }
+    void *new_items = realloc(arr->items, new_capacity * arr->elem_size);
+    if (!new_items) {
+        perror("Failed to allocate memory for dynamic array");
+        exit(EXIT_FAILURE);
+    }
+    arr->items = new_items;
+    arr->capacity = new_capacity;
+}
+
+int mlin_cmp_int(const void *a, const void *b) {
+    int int_a = *(const int *)a;
+    int int_b = *(const int *)b;
+    return (int_a > int_b) - (int_a < int_b); 
+}
+
+int mlin_cmp_float(const void *a, const void *b) {
+    float float_a = *(const float *)a;
+    float float_b = *(const float *)b;
+    return (float_a > float_b) - (float_a < float_b); 
+}
+
+int mlin_cmp_str(const void *a, const void *b) {
+    const char *str_a = *(const char **)a;
+    const char *str_b = *(const char **)b;
+    return strcmp(str_a, str_b);
+}
+
+int mlin_cmp_mlinstring(const void *a, const void *b) {
+    const MlinString *str_a = *(const MlinString **)a;
+    const MlinString *str_b = *(const MlinString **)b;
+    return strcmp(str_a->contets, str_b->contets);
+}
+
+
+//MLIN STRING IMPLEMENTATION
 void string_expand(MlinString *str, size_t min_capacity) {
     if (min_capacity <= str->capacity) return;
     size_t new_capacity = str->capacity * 2;
@@ -47,7 +211,7 @@ void string_expand(MlinString *str, size_t min_capacity) {
     }
     char *new_data = (char *)realloc(str->contets, new_capacity * sizeof(char));
     if (!new_data) {
-        perror("Failed to reallocate memory");
+        MLIN_ERROR("Failed to reallocate memory");
         exit(EXIT_FAILURE);
     }
     str->contets = new_data;
@@ -60,7 +224,7 @@ MlinString * mlin_string_create_with_src(const char * src) {
     newstring->size = 0;
     newstring->contets = (char *)malloc(newstring->capacity * sizeof(char));
     if (!newstring->contets) {
-        perror("Failed to allocate memeory");
+        MLIN_ERROR("Failed to allocate memeory");
         exit(EXIT_FAILURE);
     }
     newstring->contets[0] = '\0';
@@ -97,6 +261,7 @@ void mlin_string_free(MlinString * mlinstring){
     mlinstring->contets = NULL;
     mlinstring->capacity = 0;
     mlinstring->size = 0;
+    free(mlinstring);
 }
 
 bool mlin_string_cmp(MlinString * str1, MlinString * str2) {
@@ -124,7 +289,7 @@ void mlin_string_append(MlinString *str, const char *suffix) {
 
 void mlin_string_insert(MlinString *str, const char *substr, size_t pos) {
     if (pos > str->size) {
-        perror("Insert position is out of bounds");
+        MLIN_ERROR("Insert position is out of bounds");
         exit(EXIT_FAILURE);
     }
     size_t substr_len = strlen(substr);

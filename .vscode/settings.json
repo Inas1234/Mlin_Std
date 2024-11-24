@@ -1,6 +1,11 @@
 {
   "files.associations": {
     "*.embeddedhtml": "html",
-    "mlinstd.h": "c"
+    "mlinstd.h": "c",
+    "__bit_reference": "c",
+    "__split_buffer": "c",
+    "filesystem": "c",
+    "vector": "c",
+    "string": "c"
   }
 }
