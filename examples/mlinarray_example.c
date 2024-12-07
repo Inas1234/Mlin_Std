@@ -78,11 +78,7 @@ int main() {
     }
 
     // Free all strings and the array
-    for (size_t i = 0; i < str_array->count; i++) {
-        MlinString *str = MLIN_GET(str_array, MlinString *, i);
-        mlin_string_free(str);
-    }
-    mlin_array_free(str_array);
+    MLIN_STR_FREE(str_array);
 
     return 0;
 }

@@ -49,6 +49,13 @@ typedef struct {
 
 #define MLIN_GET(da, type, index) (*((type *)mlin_array_get(da, index)))
 
+#define MLIN_STR_FREE(da) \
+    for (size_t i = 0; i < da->count; i++){ \
+        MlinString *str = MLIN_GET(da, MlinString *, i); \
+        mlin_string_free(str); \
+    }\
+    mlin_array_free(da);
+
 
 //MLIN ARRAY
 MlinArray *mlin_array_create(size_t elem_size);
@@ -81,6 +88,111 @@ void mlin_string_to_lower(MlinString *str);
 MlinString **mlin_string_split(MlinString *str, const char *delim, size_t *count);
 void mlin_string_clear(MlinString *str);
 char mlin_string_char_at(MlinString *str, size_t index);
+
+
+// MLIN FILE I/O UTILITES
+MlinString *mlin_file_to_mlinstring(const char *filename);
+char *mlin_file_to_char(const char *filename);
+bool mlin_string_to_file(const char *filename, MlinString *str);
+bool mlin_char_to_file(const char *filename, const char *contents);
+
+
+// MLIN FILE I/O UTILITES IMPLEMENTATION
+// File Read and Write Functions
+MlinString *mlin_file_to_mlinstring(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        MLIN_ERROR("Failed to open file for reading");
+        return NULL;
+    }
+
+    MlinString *result = mlin_string_create();
+
+    char buffer[1024];
+    size_t bytesRead;
+    while ((bytesRead = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+        buffer[bytesRead] = '\0';
+        mlin_string_append(result, buffer);
+    }
+
+    if (ferror(file)) {
+        MLIN_ERROR("Error while reading file");
+        mlin_string_free(result);
+        fclose(file);
+        return NULL;
+    }
+
+    fclose(file);
+    return result;
+}
+
+char *mlin_file_to_char(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        MLIN_ERROR("Failed to open file for reading");
+        return NULL;
+    }
+
+    fseek(file, 0, SEEK_END);
+    size_t filesize = ftell(file);
+    rewind(file);
+
+    char *contents = (char *)malloc(filesize + 1);
+    if (!contents) {
+        MLIN_ERROR("Failed to allocate memory for file contents");
+        fclose(file);
+        return NULL;
+    }
+
+    size_t bytesRead = fread(contents, 1, filesize, file);
+    if (bytesRead < filesize) {
+        MLIN_ERROR("Error while reading file");
+        free(contents);
+        fclose(file);
+        return NULL;
+    }
+
+    contents[filesize] = '\0';
+    fclose(file);
+    return contents;
+}
+
+bool mlin_string_to_file(const char *filename, MlinString *str) {
+    FILE *file = fopen(filename, "w");
+    if (!file) {
+        MLIN_ERROR("Failed to open file for writing");
+        return false;
+    }
+
+    if (fwrite(str->contets, 1, str->size, file) < str->size) {
+        MLIN_ERROR("Failed to write data to file");
+        fclose(file);
+        return false;
+    }
+
+    fclose(file);
+    return true;
+}
+
+bool mlin_char_to_file(const char *filename, const char *contents) {
+    FILE *file = fopen(filename, "w");
+    if (!file) {
+        MLIN_ERROR("Failed to open file for writing");
+        return false;
+    }
+
+    size_t length = strlen(contents);
+    if (fwrite(contents, 1, length, file) < length) {
+        MLIN_ERROR("Failed to write data to file");
+        fclose(file);
+        return false;
+    }
+
+    fclose(file);
+    return true;
+}
+
+
 
 //MLIN ARRAY IMPLEMENTATION
 MlinArray *mlin_array_create(size_t elem_size) {
